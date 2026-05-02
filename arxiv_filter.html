@@ -1,0 +1,1738 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>arXiv Combinatorics Filter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@400;500&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --bg-paper: #faf7f0;
+    --ink: #1a1814;
+    --ink-soft: #5a544a;
+    --ink-faint: #8a8478;
+    --rule: #d8d2c4;
+    --rule-soft: #e8e2d4;
+    --accent: #8b2814;
+    --accent-soft: #c97a5f;
+    --highlight: #f0e4a8;
+    --bookmark: #c08a3a;
+    --shadow: rgba(26, 24, 20, 0.08);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter Tight', sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    min-height: 100vh;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(26,24,20,0.04) 1px, transparent 0);
+    background-size: 24px 24px;
+  }
+
+  /* Masthead */
+  .masthead {
+    border-bottom: 3px double var(--ink);
+    padding: 28px 0 20px;
+    margin: 0 32px;
+    text-align: center;
+    position: relative;
+  }
+
+  .masthead-meta {
+    display: flex;
+    justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-soft);
+    margin-bottom: 16px;
+  }
+
+  .masthead h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: clamp(48px, 7vw, 88px);
+    letter-spacing: -0.03em;
+    line-height: 0.95;
+    font-style: italic;
+  }
+
+  .masthead h1 .amp {
+    font-style: italic;
+    color: var(--accent);
+    font-weight: 300;
+  }
+
+  .masthead-sub {
+    font-family: 'Fraunces', serif;
+    font-size: 14px;
+    font-style: italic;
+    color: var(--ink-soft);
+    margin-top: 8px;
+    letter-spacing: 0.05em;
+  }
+
+  /* Layout */
+  .container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 32px 80px;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 40px;
+    margin-top: 32px;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    padding-right: 8px;
+  }
+
+  .sidebar::-webkit-scrollbar { width: 6px; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 3px; }
+
+  .panel {
+    background: var(--bg-paper);
+    border: 1px solid var(--rule);
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 2px 2px 0 var(--shadow);
+  }
+
+  .panel h2 {
+    font-family: 'Fraunces', serif;
+    font-size: 18px;
+    font-weight: 500;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .panel h2 .count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+    font-weight: 400;
+  }
+
+  .keyword-input {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+
+  input[type="text"], input[type="number"] {
+    flex: 1;
+    padding: 8px 10px;
+    border: 1px solid var(--rule);
+    background: white;
+    font-family: 'Inter Tight', sans-serif;
+    font-size: 13px;
+    color: var(--ink);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  input[type="text"]:focus, input[type="number"]:focus {
+    border-color: var(--ink);
+  }
+
+  button {
+    font-family: 'Inter Tight', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 8px 14px;
+    border: 1px solid var(--ink);
+    background: var(--ink);
+    color: var(--bg-paper);
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.02em;
+  }
+
+  button:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  button.ghost {
+    background: transparent;
+    color: var(--ink);
+  }
+
+  button.ghost:hover {
+    background: var(--ink);
+    color: var(--bg-paper);
+  }
+
+  .keyword-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--ink);
+    color: var(--bg-paper);
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    border-radius: 2px;
+  }
+
+  .tag.weight-high { background: var(--accent); }
+  .tag.weight-low { background: var(--ink-faint); }
+
+  .tag .weight-label {
+    font-size: 10px;
+    opacity: 0.7;
+    margin-left: 2px;
+  }
+
+  .tag .remove {
+    cursor: pointer;
+    opacity: 0.6;
+    padding: 0 2px;
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .tag .remove:hover { opacity: 1; }
+
+  .tag-empty {
+    font-size: 12px;
+    color: var(--ink-faint);
+    font-style: italic;
+  }
+
+  .form-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .form-row label {
+    font-size: 12px;
+    color: var(--ink-soft);
+    min-width: 70px;
+  }
+
+  select {
+    flex: 1;
+    padding: 8px 10px;
+    border: 1px solid var(--rule);
+    background: white;
+    font-family: 'Inter Tight', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .nav-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 20px;
+  }
+
+  .nav-tab {
+    padding: 10px 16px;
+    font-family: 'Fraunces', serif;
+    font-size: 16px;
+    font-style: italic;
+    color: var(--ink-faint);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    border-radius: 0;
+  }
+
+  .nav-tab:hover {
+    color: var(--ink);
+    background: none;
+  }
+
+  .nav-tab.active {
+    color: var(--ink);
+    border-bottom-color: var(--accent);
+  }
+
+  .nav-tab .count-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-faint);
+    margin-left: 6px;
+    font-style: normal;
+  }
+
+  /* Articles */
+  .articles { display: flex; flex-direction: column; }
+
+  .article {
+    padding: 24px 0;
+    border-bottom: 1px solid var(--rule);
+    position: relative;
+  }
+
+  .article:first-child { padding-top: 0; }
+
+  .article-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 8px;
+  }
+
+  .article-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 6px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .article-meta .arxiv-id {
+    color: var(--accent);
+  }
+
+  .article-meta .primary-cat-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 2px 7px;
+    background: var(--bg-paper);
+    border: 1px solid var(--rule);
+    color: var(--ink-soft);
+    text-transform: none;
+    letter-spacing: 0.04em;
+    border-radius: 2px;
+  }
+
+  .author-bonus-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 8px;
+    background: var(--bookmark);
+    color: var(--bg-paper);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    border-radius: 2px;
+    text-transform: none;
+    letter-spacing: 0.04em;
+  }
+
+  .article-authors .author-match {
+    color: var(--ink);
+    font-weight: 500;
+    font-style: normal;
+    background-image: linear-gradient(transparent 88%, var(--bookmark) 88%, var(--bookmark) 96%, transparent 96%);
+    padding: 0 2px;
+  }
+
+  .score-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: var(--ink);
+    color: var(--bg-paper);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 2px;
+  }
+
+  .score-badge.high { background: var(--accent); }
+  .score-badge.medium { background: var(--accent-soft); color: var(--bg-paper); }
+  .score-badge.low { background: var(--ink-faint); }
+
+  .article h3 {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: 24px;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    margin-bottom: 8px;
+    color: var(--ink);
+  }
+
+  .article h3 a {
+    color: inherit;
+    text-decoration: none;
+    background-image: linear-gradient(transparent 90%, var(--highlight) 90%);
+    background-size: 0% 100%;
+    background-repeat: no-repeat;
+    transition: background-size 0.4s ease;
+  }
+
+  .article h3 a:hover {
+    background-size: 100% 100%;
+  }
+
+  .article-authors {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 14px;
+    color: var(--ink-soft);
+    margin-bottom: 12px;
+  }
+
+  .article-abstract {
+    font-size: 14px;
+    color: var(--ink-soft);
+    line-height: 1.65;
+    max-height: 4.95em;
+    overflow: hidden;
+    position: relative;
+    transition: max-height 0.3s ease;
+  }
+
+  .article-abstract.expanded {
+    max-height: 100em;
+  }
+
+  .article-abstract::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 50%;
+    height: 1.5em;
+    background: linear-gradient(to right, transparent, var(--bg));
+    pointer-events: none;
+  }
+
+  .article-abstract.expanded::after { display: none; }
+
+  .article mark {
+    background: var(--highlight);
+    color: var(--ink);
+    padding: 0 2px;
+    border-radius: 1px;
+  }
+
+  .article-actions {
+    display: flex;
+    gap: 16px;
+    margin-top: 12px;
+    align-items: center;
+  }
+
+  .action-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-soft);
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 4px 0;
+    transition: color 0.15s;
+  }
+
+  .action-btn:hover {
+    color: var(--accent);
+    background: none;
+  }
+
+  .action-btn.bookmarked {
+    color: var(--bookmark);
+  }
+
+  .article-categories {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+  }
+
+  .category-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 2px 6px;
+    border: 1px solid var(--rule);
+    color: var(--ink-soft);
+    background: var(--bg-paper);
+  }
+
+  /* Category panel */
+  .cat-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px dotted var(--rule);
+  }
+
+  .cat-row:last-child { border-bottom: none; }
+
+  .cat-row input[type="checkbox"] {
+    cursor: pointer;
+    accent-color: var(--accent);
+  }
+
+  .cat-code {
+    flex: 1;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  .cat-row.disabled .cat-code { color: var(--ink-faint); text-decoration: line-through; }
+
+  .cat-priority-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 3px 7px;
+    border-radius: 2px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+    user-select: none;
+  }
+
+  .cat-priority-badge.main {
+    background: var(--accent);
+    color: var(--bg-paper);
+  }
+
+  .cat-priority-badge.secondary {
+    background: transparent;
+    color: var(--ink-soft);
+    border-color: var(--rule);
+  }
+
+  .cat-priority-badge:hover {
+    transform: translateY(-1px);
+  }
+
+  .cat-remove {
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--ink-faint);
+    line-height: 1;
+    padding: 0 4px;
+  }
+
+  .cat-remove:hover { color: var(--accent); }
+
+  /* Status */
+  .status {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--ink-soft);
+  }
+
+  .status .ornament {
+    font-family: 'Fraunces', serif;
+    font-size: 32px;
+    color: var(--rule);
+    margin-bottom: 16px;
+    letter-spacing: 0.4em;
+  }
+
+  .status p {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 16px;
+  }
+
+  .loader {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--rule);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 10px;
+    vertical-align: middle;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .toolbar-info {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 14px;
+    color: var(--ink-soft);
+  }
+
+  .toolbar-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .small-btn {
+    padding: 6px 10px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* Footer */
+  footer {
+    margin-top: 60px;
+    padding: 24px 0;
+    border-top: 3px double var(--ink);
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .layout {
+      grid-template-columns: 1fr;
+    }
+    .sidebar {
+      position: static;
+      max-height: none;
+    }
+    .container { padding: 0 20px 40px; }
+    .masthead { margin: 0 20px; }
+  }
+
+  /* Help text */
+  .help-text {
+    font-size: 11px;
+    color: var(--ink-faint);
+    line-height: 1.5;
+    margin-top: 8px;
+    font-style: italic;
+  }
+
+  /* Auto-refresh indicator */
+  .refresh-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+
+  .refresh-dot {
+    width: 6px;
+    height: 6px;
+    background: #4caf50;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-meta">
+    <span id="today-date">—</span>
+    <span>vol. i · no. 1</span>
+    <span id="last-update">—</span>
+  </div>
+  <h1>The Combinatorial <span class="amp">&amp;</span> <em>Geometric</em></h1>
+  <div class="masthead-sub">a personal digest of arXiv math — curated by category &amp; keywords</div>
+</header>
+
+<div class="container">
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+
+    <div class="panel">
+      <h2>Categories <span class="count" id="cat-count">0</span></h2>
+      <div id="category-list"></div>
+      <div class="keyword-input" style="margin-top: 10px;">
+        <input type="text" id="cat-input" placeholder="add code, e.g. math.NT" />
+        <button id="cat-add">Add</button>
+      </div>
+      <div class="help-text">
+        <strong>Main</strong> = priority (1.5× score boost). <strong>Secondary</strong> = also fetched, no boost. Click the badge to toggle.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Keywords <span class="count" id="kw-count">0</span></h2>
+      <div class="keyword-input">
+        <input type="text" id="kw-input" placeholder="e.g. Ramsey, graph, lattice" />
+        <button id="kw-add">Add</button>
+      </div>
+      <div class="form-row">
+        <label>Weight</label>
+        <select id="kw-weight">
+          <option value="3">High (×3)</option>
+          <option value="2" selected>Normal (×2)</option>
+          <option value="1">Low (×1)</option>
+        </select>
+      </div>
+      <div class="keyword-tags" id="keyword-tags"></div>
+      <div class="help-text">
+        Score = Σ(weight × occurrences in title/abstract). Title hits count double.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Authors <span class="count" id="au-count">0</span></h2>
+      <div class="keyword-input">
+        <input type="text" id="au-input" placeholder="e.g. Tao, Conlon, T. Tao" />
+        <button id="au-add">Add</button>
+      </div>
+      <div class="form-row">
+        <label>Bonus</label>
+        <select id="au-weight">
+          <option value="10">High (+10)</option>
+          <option value="5" selected>Normal (+5)</option>
+          <option value="2">Low (+2)</option>
+        </select>
+      </div>
+      <div class="keyword-tags" id="author-tags"></div>
+      <div class="help-text">
+        Match by last name (or "F. Last" / "First Last"). Adds bonus to score per matched author. Auto-bookmark toggle below.
+      </div>
+      <div class="form-row" style="margin-top: 8px;">
+        <label style="font-size: 11px;">
+          <input type="checkbox" id="auto-bookmark-author" /> Auto-bookmark
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Filters</h2>
+      <div class="form-row">
+        <label>Days back</label>
+        <input type="number" id="days-back" value="7" min="1" max="60" />
+      </div>
+      <div class="form-row">
+        <label>Min score</label>
+        <input type="number" id="min-score" value="0" min="0" />
+      </div>
+      <div class="form-row">
+        <label>Sort by</label>
+        <select id="sort-by">
+          <option value="score">Relevance score</option>
+          <option value="date">Date (newest)</option>
+          <option value="date-old">Date (oldest)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Max results</label>
+        <input type="number" id="max-results" value="100" min="10" max="500" />
+      </div>
+      <button id="fetch-btn" style="width: 100%; margin-top: 8px;">Fetch papers</button>
+      <div class="help-text" id="cache-info">No data yet. Click fetch to begin.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Auto-refresh</h2>
+      <div class="form-row">
+        <label>
+          <input type="checkbox" id="auto-refresh" /> Daily
+        </label>
+        <span class="refresh-indicator" id="refresh-status" style="display:none;">
+          <span class="refresh-dot"></span>
+          <span>active</span>
+        </span>
+      </div>
+      <div class="help-text">
+        Refreshes when you reopen the page after 24h. Data is cached locally — your bookmarks and keywords persist between sessions.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Data</h2>
+      <button class="ghost small-btn" id="export-btn" style="width: 100%; margin-bottom: 6px;">Export bookmarks (JSON)</button>
+      <button class="ghost small-btn" id="clear-cache-btn" style="width: 100%;">Clear cache</button>
+    </div>
+
+  </aside>
+
+  <!-- Main -->
+  <main>
+    <nav class="nav-tabs">
+      <button class="nav-tab active" data-view="filtered">
+        Filtered <span class="count-badge" id="filtered-count">0</span>
+      </button>
+      <button class="nav-tab" data-view="all">
+        All recent <span class="count-badge" id="all-count">0</span>
+      </button>
+      <button class="nav-tab" data-view="bookmarks">
+        Bookmarks <span class="count-badge" id="bookmark-count">0</span>
+      </button>
+    </nav>
+
+    <div class="toolbar" id="toolbar" style="display:none;">
+      <div class="toolbar-info" id="toolbar-info"></div>
+      <div class="toolbar-actions">
+        <button class="ghost small-btn" id="expand-all">Expand all</button>
+        <button class="ghost small-btn" id="collapse-all">Collapse all</button>
+      </div>
+    </div>
+
+    <div class="articles" id="articles">
+      <div class="status">
+        <div class="ornament">· · ·</div>
+        <p>Add a keyword and click "Fetch papers" to begin curating.</p>
+      </div>
+    </div>
+  </main>
+
+</div>
+</div>
+
+<footer>
+  arXiv math.CO · powered by export.arxiv.org · stored in localStorage
+</footer>
+
+<script>
+// ============================================================
+// State & Storage
+// ============================================================
+const STORAGE_KEYS = {
+  keywords: 'arxiv_filter_keywords',
+  authors: 'arxiv_filter_authors',
+  bookmarks: 'arxiv_filter_bookmarks',
+  papers: 'arxiv_filter_papers',
+  lastFetch: 'arxiv_filter_last_fetch',
+  autoRefresh: 'arxiv_filter_auto_refresh',
+  autoBookmarkAuthor: 'arxiv_filter_auto_bookmark_author',
+  settings: 'arxiv_filter_settings',
+  categories: 'arxiv_filter_categories',
+};
+
+const DEFAULT_CATEGORIES = [
+  { code: 'math.CO', enabled: true, priority: 'main' },
+  { code: 'math.AG', enabled: true, priority: 'secondary' },
+];
+
+const state = {
+  keywords: loadJSON(STORAGE_KEYS.keywords, []),
+  authors: loadJSON(STORAGE_KEYS.authors, []),
+  bookmarks: loadJSON(STORAGE_KEYS.bookmarks, {}),
+  papers: loadJSON(STORAGE_KEYS.papers, []),
+  categories: loadJSON(STORAGE_KEYS.categories, DEFAULT_CATEGORIES),
+  lastFetch: localStorage.getItem(STORAGE_KEYS.lastFetch),
+  autoRefresh: localStorage.getItem(STORAGE_KEYS.autoRefresh) === 'true',
+  autoBookmarkAuthor: localStorage.getItem(STORAGE_KEYS.autoBookmarkAuthor) === 'true',
+  view: 'filtered',
+  catFilter: 'all', // 'all' | category code
+  expanded: new Set(),
+};
+
+function loadJSON(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v ? JSON.parse(v) : fallback;
+  } catch (e) { return fallback; }
+}
+
+function saveJSON(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+// ============================================================
+// arXiv API
+// ============================================================
+// arXiv's API does not currently send CORS headers, so direct browser fetch
+// fails when the page is opened via file:// or any non-arxiv origin.
+// We try direct first (fast, works on localhost/served pages), then fall back
+// to public CORS proxies if needed.
+// API docs: https://info.arxiv.org/help/api/user-manual.html
+
+const CORS_PROXIES = [
+  // corsproxy.io: simple, reliable, no auth needed. Wraps URL as path param.
+  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  // allorigins: returns content as text. Backup if corsproxy.io is down.
+  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+];
+
+// Remember which strategy worked last so we don't keep retrying broken paths.
+let _fetchStrategy = null; // null = unknown, 0 = direct, 1+ = proxy index
+
+async function fetchWithFallback(url) {
+  // Build the strategy list: start with the last-known-good one if we have it.
+  const strategies = [];
+  if (_fetchStrategy === 0) strategies.push({ kind: 'direct', url });
+  else if (_fetchStrategy != null) strategies.push({ kind: 'proxy', url: CORS_PROXIES[_fetchStrategy - 1](url), idx: _fetchStrategy });
+  // Then try everything else.
+  if (_fetchStrategy !== 0) strategies.push({ kind: 'direct', url });
+  for (let i = 0; i < CORS_PROXIES.length; i++) {
+    if (_fetchStrategy === i + 1) continue;
+    strategies.push({ kind: 'proxy', url: CORS_PROXIES[i](url), idx: i + 1 });
+  }
+
+  let lastError = null;
+  for (const s of strategies) {
+    try {
+      const response = await fetch(s.url);
+      if (!response.ok) { lastError = new Error(`HTTP ${response.status}`); continue; }
+      const text = await response.text();
+      // Cache the working strategy
+      _fetchStrategy = s.kind === 'direct' ? 0 : s.idx;
+      return text;
+    } catch (e) {
+      lastError = e;
+      // Continue to next strategy
+    }
+  }
+  throw lastError || new Error('All fetch strategies failed');
+}
+
+// Each category fetches separately so we get fair coverage of each — combining
+// with OR in one query lets newer papers from one category crowd out the other.
+async function fetchOneCategory(cat, fmt, past, now, maxResults) {
+  const query = `cat:${cat}+AND+submittedDate:[${fmt(past)}+TO+${fmt(now)}]`;
+  const url = `https://export.arxiv.org/api/query?search_query=${query}&start=0&max_results=${maxResults}&sortBy=submittedDate&sortOrder=descending`;
+
+  const xmlText = await fetchWithFallback(url);
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, 'application/xml');
+
+  if (doc.querySelector('parsererror')) throw new Error('XML parse error for ' + cat);
+
+  const entries = Array.from(doc.querySelectorAll('entry'));
+  return entries.map(entry => {
+    const id = entry.querySelector('id')?.textContent?.trim() || '';
+    const arxivId = id.split('/abs/')[1] || id;
+    const title = (entry.querySelector('title')?.textContent || '').replace(/\s+/g, ' ').trim();
+    const abstract = (entry.querySelector('summary')?.textContent || '').replace(/\s+/g, ' ').trim();
+    const published = entry.querySelector('published')?.textContent || '';
+    const updated = entry.querySelector('updated')?.textContent || '';
+    const authors = Array.from(entry.querySelectorAll('author name')).map(n => n.textContent.trim());
+    const categories = Array.from(entry.querySelectorAll('category')).map(c => c.getAttribute('term'));
+    const pdfLink = Array.from(entry.querySelectorAll('link'))
+      .find(l => l.getAttribute('title') === 'pdf')?.getAttribute('href') || '';
+    const absLink = id;
+    // Track which "primary" category fetched this paper (papers can be cross-listed)
+    const primaryCategory = entry.querySelector('arxiv\\:primary_category, primary_category')?.getAttribute('term') || categories[0] || cat;
+
+    return { arxivId, title, abstract, published, updated, authors, categories, primaryCategory, pdfLink, absLink, fetchedFrom: cat };
+  });
+}
+
+async function fetchArxivPapers({ daysBack, maxResults, categories }) {
+  // categories: [{ code: 'math.CO', enabled: true, priority: 'main' }, ...]
+  const enabled = categories.filter(c => c.enabled);
+  if (!enabled.length) throw new Error('No categories enabled');
+
+  const now = new Date();
+  const past = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000);
+  const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '') + '0000';
+
+  // Each category gets its own slice of the maxResults budget.
+  // Main category gets a larger share since it's the priority.
+  const mainCount = enabled.filter(c => c.priority === 'main').length;
+  const secondaryCount = enabled.length - mainCount;
+  const mainBudget = mainCount > 0
+    ? Math.floor(maxResults * (secondaryCount > 0 ? 0.65 : 1.0) / mainCount)
+    : 0;
+  const secondaryBudget = secondaryCount > 0
+    ? Math.floor(maxResults * (mainCount > 0 ? 0.35 : 1.0) / secondaryCount)
+    : 0;
+
+  // Run all category requests in parallel (arXiv allows this; rate limit is per-second not concurrent).
+  // But add small stagger between launches to be polite.
+  const results = await Promise.all(enabled.map(async (cat, i) => {
+    if (i > 0) await new Promise(r => setTimeout(r, 250 * i));
+    const budget = cat.priority === 'main' ? mainBudget : secondaryBudget;
+    return fetchOneCategory(cat.code, fmt, past, now, budget);
+  }));
+
+  // Deduplicate by arxivId — a paper cross-listed in math.CO and math.AG appears in both fetches.
+  // Keep the entry from the first (highest-priority) category that found it.
+  const seen = new Map();
+  for (const batch of results) {
+    for (const paper of batch) {
+      if (!seen.has(paper.arxivId)) {
+        seen.set(paper.arxivId, paper);
+      }
+    }
+  }
+  return Array.from(seen.values());
+}
+
+// ============================================================
+// Scoring
+// ============================================================
+// ============================================================
+// Author matching
+// ============================================================
+// Authors come from arXiv as full names like "Terence Tao" or "T. Tao".
+// User input is flexible: just "Tao" matches anyone with that last name;
+// "T. Tao" or "Terence Tao" requires both the initial/given name to align.
+function normalizeAuthorName(name) {
+  return name.toLowerCase()
+    .replace(/[\u00C0-\u017F]/g, c => c.normalize('NFD').replace(/[\u0300-\u036f]/g, '')) // strip diacritics
+    .replace(/[^a-z\s.,'-]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getLastName(fullName) {
+  // Handle "Last, First" format
+  if (fullName.includes(',')) {
+    return fullName.split(',')[0].trim();
+  }
+  // Otherwise the last whitespace-separated token, ignoring trailing initials/dots
+  const tokens = fullName.trim().split(/\s+/).filter(t => !/^[A-Z]\.?$/.test(t));
+  return (tokens[tokens.length - 1] || fullName).replace(/\.$/, '');
+}
+
+function getFirstInitial(fullName) {
+  // Returns first letter of the first given name, or empty string
+  if (fullName.includes(',')) {
+    const after = fullName.split(',')[1]?.trim() || '';
+    return (after[0] || '').toLowerCase();
+  }
+  return (fullName.trim()[0] || '').toLowerCase();
+}
+
+function authorMatches(paperAuthor, queryAuthor) {
+  const pa = normalizeAuthorName(paperAuthor);
+  const qa = normalizeAuthorName(queryAuthor);
+  if (!pa || !qa) return false;
+
+  const paLast = getLastName(pa);
+  const qaLast = getLastName(qa);
+  if (paLast !== qaLast) return false;
+
+  // If query is just a last name (single token, no comma), last-name match is enough
+  const queryTokens = qa.replace(',', '').split(/\s+/).filter(Boolean);
+  if (queryTokens.length === 1) return true;
+
+  // Otherwise also check that first initials align
+  const paFirst = getFirstInitial(pa);
+  const qaFirst = getFirstInitial(qa);
+  if (paFirst && qaFirst && paFirst !== qaFirst) return false;
+  return true;
+}
+
+function findAuthorMatches(paper, authors) {
+  // Returns array of { author: queryAuthor, paperAuthor: matchedPaperAuthor, weight }
+  const matches = [];
+  for (const a of authors) {
+    if (!a.name) continue;
+    for (const pa of paper.authors) {
+      if (authorMatches(pa, a.name)) {
+        matches.push({ query: a.name, paperAuthor: pa, weight: a.weight });
+        break; // one match per query author per paper
+      }
+    }
+  }
+  return matches;
+}
+
+// ============================================================
+// Scoring
+// ============================================================
+function scorePaper(paper, keywords, categoryConfig, authors) {
+  const titleLower = paper.title.toLowerCase();
+  const abstractLower = paper.abstract.toLowerCase();
+  let score = 0;
+  const hits = {};
+
+  for (const kw of keywords) {
+    const term = kw.term.toLowerCase();
+    if (!term) continue;
+    // Word-boundary regex (escape special chars)
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`\\b${escaped}\\b`, 'gi');
+
+    const titleMatches = (paper.title.match(re) || []).length;
+    const abstractMatches = (paper.abstract.match(re) || []).length;
+    const total = titleMatches * 2 + abstractMatches; // title hits count double
+    const weighted = total * kw.weight;
+
+    if (total > 0) {
+      hits[kw.term] = { title: titleMatches, abstract: abstractMatches, weighted };
+      score += weighted;
+    }
+  }
+
+  // Author bonus — flat bonus per matched author, applied BEFORE category multiplier
+  // so that the multiplier rewards "main category + known author" combos.
+  const authorMatches = authors ? findAuthorMatches(paper, authors) : [];
+  let authorBonus = 0;
+  for (const m of authorMatches) {
+    authorBonus += m.weight;
+  }
+  score += authorBonus;
+
+  // Category priority multiplier — main category papers rank above secondary.
+  let categoryMultiplier = 1.0;
+  if (categoryConfig && categoryConfig.length) {
+    const primary = paper.primaryCategory || paper.fetchedFrom;
+    const cfg = categoryConfig.find(c => c.code === primary)
+             || categoryConfig.find(c => paper.categories?.includes(c.code))
+             || categoryConfig.find(c => c.code === paper.fetchedFrom);
+    if (cfg) {
+      categoryMultiplier = cfg.priority === 'main' ? 1.5 : 1.0;
+    }
+  }
+  score = Math.round(score * categoryMultiplier * 10) / 10;
+
+  return { score, hits, authorMatches, authorBonus };
+}
+
+function highlightText(text, keywords) {
+  if (!keywords.length) return escapeHtml(text);
+  let result = escapeHtml(text);
+  for (const kw of keywords) {
+    if (!kw.term) continue;
+    const escaped = kw.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`\\b(${escaped})\\b`, 'gi');
+    result = result.replace(re, '<mark>$1</mark>');
+  }
+  return result;
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+// ============================================================
+// Rendering
+// ============================================================
+function render() {
+  renderCategories();
+  renderKeywords();
+  renderAuthors();
+  renderArticles();
+  renderCounts();
+  renderMeta();
+  renderRefreshStatus();
+  renderCategoryFilter();
+}
+
+function renderAuthors() {
+  const container = document.getElementById('author-tags');
+  document.getElementById('au-count').textContent = state.authors.length;
+  document.getElementById('auto-bookmark-author').checked = state.autoBookmarkAuthor;
+  if (!state.authors.length) {
+    container.innerHTML = '<span class="tag-empty">No authors yet — add one above.</span>';
+    return;
+  }
+  container.innerHTML = state.authors.map((a, i) => {
+    const cls = a.weight >= 10 ? 'weight-high' : a.weight <= 2 ? 'weight-low' : '';
+    const label = `+${a.weight}`;
+    return `<span class="tag ${cls}">${escapeHtml(a.name)}<span class="weight-label">${label}</span><span class="remove" data-au-idx="${i}">×</span></span>`;
+  }).join('');
+  container.querySelectorAll('.remove').forEach(el => {
+    el.addEventListener('click', () => {
+      state.authors.splice(parseInt(el.dataset.auIdx), 1);
+      saveJSON(STORAGE_KEYS.authors, state.authors);
+      rescoreAll();
+      render();
+    });
+  });
+}
+
+function renderCategories() {
+  const container = document.getElementById('category-list');
+  document.getElementById('cat-count').textContent =
+    state.categories.filter(c => c.enabled).length;
+
+  if (!state.categories.length) {
+    container.innerHTML = '<div class="tag-empty">No categories. Add one below.</div>';
+    return;
+  }
+
+  container.innerHTML = state.categories.map((c, i) => `
+    <div class="cat-row ${c.enabled ? '' : 'disabled'}">
+      <input type="checkbox" data-cat-idx="${i}" ${c.enabled ? 'checked' : ''} />
+      <span class="cat-code">${escapeHtml(c.code)}</span>
+      <span class="cat-priority-badge ${c.priority}" data-cat-idx="${i}">${c.priority}</span>
+      <span class="cat-remove" data-cat-idx="${i}" title="Remove">×</span>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('input[type="checkbox"]').forEach(el => {
+    el.addEventListener('change', () => {
+      const i = parseInt(el.dataset.catIdx);
+      state.categories[i].enabled = el.checked;
+      saveJSON(STORAGE_KEYS.categories, state.categories);
+      rescoreAll();
+      render();
+    });
+  });
+
+  container.querySelectorAll('.cat-priority-badge').forEach(el => {
+    el.addEventListener('click', () => {
+      const i = parseInt(el.dataset.catIdx);
+      state.categories[i].priority = state.categories[i].priority === 'main' ? 'secondary' : 'main';
+      saveJSON(STORAGE_KEYS.categories, state.categories);
+      rescoreAll();
+      render();
+    });
+  });
+
+  container.querySelectorAll('.cat-remove').forEach(el => {
+    el.addEventListener('click', () => {
+      const i = parseInt(el.dataset.catIdx);
+      if (confirm(`Remove category ${state.categories[i].code}?`)) {
+        state.categories.splice(i, 1);
+        saveJSON(STORAGE_KEYS.categories, state.categories);
+        render();
+      }
+    });
+  });
+}
+
+function renderCategoryFilter() {
+  // Add a category filter row above articles when there are 2+ enabled categories
+  const enabled = state.categories.filter(c => c.enabled);
+  let bar = document.getElementById('cat-filter-bar');
+  if (enabled.length < 2) {
+    if (bar) bar.remove();
+    return;
+  }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'cat-filter-bar';
+    bar.style.cssText = 'display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;align-items:center;';
+    const tabs = document.querySelector('.nav-tabs');
+    tabs.parentNode.insertBefore(bar, tabs.nextSibling);
+  }
+  const all = [{ code: 'all', label: 'All categories' }, ...enabled.map(c => ({ code: c.code, label: c.code }))];
+  bar.innerHTML = `
+    <span style="font-family:'Fraunces',serif;font-style:italic;font-size:13px;color:var(--ink-soft);margin-right:4px;">in</span>
+    ${all.map(c => `
+      <button class="cat-filter-btn ${state.catFilter === c.code ? 'active' : ''}" data-cat="${escapeHtml(c.code)}"
+        style="font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 10px;
+        background:${state.catFilter === c.code ? 'var(--ink)' : 'transparent'};
+        color:${state.catFilter === c.code ? 'var(--bg-paper)' : 'var(--ink-soft)'};
+        border:1px solid ${state.catFilter === c.code ? 'var(--ink)' : 'var(--rule)'};
+        border-radius:2px;cursor:pointer;">${escapeHtml(c.label)}</button>
+    `).join('')}
+  `;
+  bar.querySelectorAll('.cat-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.catFilter = btn.dataset.cat;
+      render();
+    });
+  });
+}
+
+function renderKeywords() {
+  const container = document.getElementById('keyword-tags');
+  document.getElementById('kw-count').textContent = state.keywords.length;
+  if (!state.keywords.length) {
+    container.innerHTML = '<span class="tag-empty">No keywords yet — add one above.</span>';
+    return;
+  }
+  container.innerHTML = state.keywords.map((kw, i) => {
+    const cls = kw.weight === 3 ? 'weight-high' : kw.weight === 1 ? 'weight-low' : '';
+    const label = kw.weight === 3 ? '×3' : kw.weight === 1 ? '×1' : '×2';
+    return `<span class="tag ${cls}">${escapeHtml(kw.term)}<span class="weight-label">${label}</span><span class="remove" data-idx="${i}">×</span></span>`;
+  }).join('');
+  container.querySelectorAll('.remove').forEach(el => {
+    el.addEventListener('click', () => {
+      state.keywords.splice(parseInt(el.dataset.idx), 1);
+      saveJSON(STORAGE_KEYS.keywords, state.keywords);
+      render();
+    });
+  });
+}
+
+function renderCounts() {
+  const minScore = parseInt(document.getElementById('min-score').value) || 0;
+  const inFilter = state.papers.filter(paperMatchesCategoryFilter);
+  const filtered = inFilter.filter(p => {
+    const hasAuthorMatch = (p._authorMatches?.length || 0) > 0;
+    return (p._score >= minScore && p._score > 0) || hasAuthorMatch;
+  });
+  document.getElementById('filtered-count').textContent = filtered.length;
+  document.getElementById('all-count').textContent = inFilter.length;
+  document.getElementById('bookmark-count').textContent = Object.keys(state.bookmarks).length;
+}
+
+function renderMeta() {
+  const today = new Date();
+  document.getElementById('today-date').textContent = today.toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+  });
+  if (state.lastFetch) {
+    const last = new Date(state.lastFetch);
+    document.getElementById('last-update').textContent = 'updated ' + last.toLocaleString('en-US', {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+    let strategyNote = '';
+    if (_fetchStrategy === 0) strategyNote = ' · direct';
+    else if (_fetchStrategy > 0) strategyNote = ' · via proxy';
+    document.getElementById('cache-info').textContent =
+      `${state.papers.length} papers cached · last fetched ${timeAgo(last)}${strategyNote}`;
+  } else {
+    document.getElementById('last-update').textContent = 'never updated';
+  }
+}
+
+function renderRefreshStatus() {
+  document.getElementById('auto-refresh').checked = state.autoRefresh;
+  document.getElementById('refresh-status').style.display = state.autoRefresh ? 'inline-flex' : 'none';
+}
+
+function timeAgo(date) {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function getPapersForView() {
+  const minScore = parseInt(document.getElementById('min-score').value) || 0;
+  const sortBy = document.getElementById('sort-by').value;
+
+  let papers;
+  if (state.view === 'filtered') {
+    // Show if keyword match (score > 0) OR author match — author matches always pass through
+    papers = state.papers.filter(p => {
+      const hasAuthorMatch = (p._authorMatches?.length || 0) > 0;
+      return (p._score >= minScore && p._score > 0) || hasAuthorMatch;
+    });
+  } else if (state.view === 'all') {
+    papers = state.papers.slice();
+  } else { // bookmarks
+    papers = Object.values(state.bookmarks).map(b => ({
+      ...b,
+      _score: b._score ?? 0,
+      _hits: b._hits ?? {},
+    }));
+  }
+
+  // Apply category filter (skip for bookmarks since they're a separate collection)
+  if (state.view !== 'bookmarks') {
+    papers = papers.filter(paperMatchesCategoryFilter);
+  }
+
+  if (sortBy === 'score' && state.view !== 'bookmarks') {
+    papers.sort((a, b) => b._score - a._score || new Date(b.published) - new Date(a.published));
+  } else if (sortBy === 'date') {
+    papers.sort((a, b) => new Date(b.published) - new Date(a.published));
+  } else if (sortBy === 'date-old') {
+    papers.sort((a, b) => new Date(a.published) - new Date(b.published));
+  }
+  return papers;
+}
+
+function renderArticles() {
+  const container = document.getElementById('articles');
+  const toolbar = document.getElementById('toolbar');
+  const papers = getPapersForView();
+
+  if (!papers.length) {
+    toolbar.style.display = 'none';
+    let msg;
+    if (state.view === 'bookmarks') {
+      msg = 'No bookmarks yet. Click "save" on any article to bookmark it.';
+    } else if (state.view === 'filtered') {
+      msg = state.papers.length
+        ? 'No papers match your keywords. Try adding more keywords or lowering the min score.'
+        : 'No papers fetched yet. Click "Fetch papers" in the sidebar.';
+    } else {
+      msg = 'No papers fetched yet.';
+    }
+    container.innerHTML = `<div class="status"><div class="ornament">· · ·</div><p>${msg}</p></div>`;
+    return;
+  }
+
+  toolbar.style.display = 'flex';
+  document.getElementById('toolbar-info').textContent =
+    `Showing ${papers.length} ${papers.length === 1 ? 'paper' : 'papers'}` +
+    (state.view === 'filtered' && state.keywords.length
+      ? ` matching ${state.keywords.length} keyword${state.keywords.length > 1 ? 's' : ''}`
+      : '');
+
+  container.innerHTML = papers.map(p => renderArticle(p)).join('');
+
+  // Event listeners
+  container.querySelectorAll('.action-bookmark').forEach(btn => {
+    btn.addEventListener('click', () => toggleBookmark(btn.dataset.id));
+  });
+  container.querySelectorAll('.action-toggle-abstract').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      if (state.expanded.has(id)) state.expanded.delete(id);
+      else state.expanded.add(id);
+      const abs = container.querySelector(`.article-abstract[data-id="${CSS.escape(id)}"]`);
+      if (abs) abs.classList.toggle('expanded');
+      btn.textContent = state.expanded.has(id) ? 'collapse' : 'read more';
+    });
+  });
+}
+
+function renderArticle(p) {
+  const isBookmarked = !!state.bookmarks[p.arxivId];
+  const isExpanded = state.expanded.has(p.arxivId);
+  const date = new Date(p.published);
+  const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  let scoreCls = 'low';
+  if (p._score >= 6) scoreCls = 'high';
+  else if (p._score >= 3) scoreCls = 'medium';
+
+  const hitsList = Object.entries(p._hits || {})
+    .sort((a, b) => b[1].weighted - a[1].weighted)
+    .map(([term, h]) => `${escapeHtml(term)} (${h.title + h.abstract})`)
+    .join(', ');
+
+  // Build set of matched paper-author names for highlighting
+  const matchedAuthorNames = new Set((p._authorMatches || []).map(m => m.paperAuthor));
+  const renderedAuthors = p.authors.map(a => {
+    if (matchedAuthorNames.has(a)) {
+      return `<span class="author-match">${escapeHtml(a)}</span>`;
+    }
+    return escapeHtml(a);
+  }).join(', ');
+
+  const authorMatchSummary = (p._authorMatches || []).length
+    ? `<span class="author-bonus-badge" title="${p._authorMatches.length} matched author${p._authorMatches.length > 1 ? 's' : ''}">★ +${p._authorBonus} author</span>`
+    : '';
+
+  return `
+    <article class="article">
+      <div class="article-meta">
+        <span class="arxiv-id">arXiv:${escapeHtml(p.arxivId)}</span>
+        ${p.primaryCategory ? `<span class="primary-cat-badge">${escapeHtml(p.primaryCategory)}</span>` : ''}
+        <span>${dateStr}</span>
+        ${p._score > 0 ? `<span class="score-badge ${scoreCls}">score ${p._score}</span>` : ''}
+        ${authorMatchSummary}
+        ${hitsList ? `<span style="font-style:italic;text-transform:none;letter-spacing:0;">matched: ${hitsList}</span>` : ''}
+      </div>
+      <h3><a href="${escapeHtml(p.absLink)}" target="_blank" rel="noopener">${highlightText(p.title, state.keywords)}</a></h3>
+      <div class="article-authors">${renderedAuthors}</div>
+      <div class="article-abstract ${isExpanded ? 'expanded' : ''}" data-id="${escapeHtml(p.arxivId)}">
+        ${highlightText(p.abstract, state.keywords)}
+      </div>
+      <div class="article-categories">
+        ${p.categories.map(c => `<span class="category-tag">${escapeHtml(c)}</span>`).join('')}
+      </div>
+      <div class="article-actions">
+        <button class="action-btn action-toggle-abstract" data-id="${escapeHtml(p.arxivId)}">${isExpanded ? 'collapse' : 'read more'}</button>
+        <a href="${escapeHtml(p.pdfLink || p.absLink)}" target="_blank" rel="noopener" class="action-btn" style="text-decoration:none;">view pdf →</a>
+        <button class="action-btn action-bookmark ${isBookmarked ? 'bookmarked' : ''}" data-id="${escapeHtml(p.arxivId)}">
+          ${isBookmarked ? '★ saved' : '☆ save'}
+        </button>
+      </div>
+    </article>
+  `;
+}
+
+// ============================================================
+// Actions
+// ============================================================
+function addKeyword() {
+  const input = document.getElementById('kw-input');
+  const term = input.value.trim();
+  if (!term) return;
+  const weight = parseInt(document.getElementById('kw-weight').value);
+  if (state.keywords.some(k => k.term.toLowerCase() === term.toLowerCase())) {
+    input.value = '';
+    return;
+  }
+  state.keywords.push({ term, weight });
+  saveJSON(STORAGE_KEYS.keywords, state.keywords);
+  input.value = '';
+  rescoreAll();
+  render();
+}
+
+function rescoreAll() {
+  state.papers.forEach(p => {
+    const { score, hits, authorMatches, authorBonus } = scorePaper(p, state.keywords, state.categories, state.authors);
+    p._score = score;
+    p._hits = hits;
+    p._authorMatches = authorMatches;
+    p._authorBonus = authorBonus;
+  });
+
+  // Auto-bookmark papers with author matches if the toggle is on
+  if (state.autoBookmarkAuthor) {
+    let added = 0;
+    for (const p of state.papers) {
+      if (p._authorMatches?.length && !state.bookmarks[p.arxivId]) {
+        state.bookmarks[p.arxivId] = { ...p, _bookmarkedAt: new Date().toISOString(), _autoBookmarked: true };
+        added++;
+      }
+    }
+    if (added > 0) saveJSON(STORAGE_KEYS.bookmarks, state.bookmarks);
+  }
+
+  saveJSON(STORAGE_KEYS.papers, state.papers);
+}
+
+function paperMatchesCategoryFilter(paper) {
+  if (state.catFilter === 'all') return true;
+  // Match if the paper has the selected category as primary, in its category list, or fetched from it
+  if (paper.primaryCategory === state.catFilter) return true;
+  if (paper.categories?.includes(state.catFilter)) return true;
+  if (paper.fetchedFrom === state.catFilter) return true;
+  return false;
+}
+
+function toggleBookmark(arxivId) {
+  if (state.bookmarks[arxivId]) {
+    delete state.bookmarks[arxivId];
+  } else {
+    const paper = state.papers.find(p => p.arxivId === arxivId)
+                || Object.values(state.bookmarks).find(b => b.arxivId === arxivId);
+    if (paper) {
+      state.bookmarks[arxivId] = { ...paper, _bookmarkedAt: new Date().toISOString() };
+    }
+  }
+  saveJSON(STORAGE_KEYS.bookmarks, state.bookmarks);
+  render();
+}
+
+async function doFetch() {
+  const btn = document.getElementById('fetch-btn');
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loader"></span>Fetching…';
+
+  try {
+    const enabledCats = state.categories.filter(c => c.enabled);
+    if (!enabledCats.length) {
+      alert('Enable at least one category to fetch papers.');
+      return;
+    }
+    const daysBack = parseInt(document.getElementById('days-back').value) || 7;
+    const maxResults = parseInt(document.getElementById('max-results').value) || 100;
+    const papers = await fetchArxivPapers({ daysBack, maxResults, categories: state.categories });
+    state.papers = papers;
+    rescoreAll();
+    state.lastFetch = new Date().toISOString();
+    saveJSON(STORAGE_KEYS.papers, state.papers);
+    localStorage.setItem(STORAGE_KEYS.lastFetch, state.lastFetch);
+    render();
+  } catch (e) {
+    alert(
+      'Failed to fetch from arXiv: ' + e.message + '\n\n' +
+      'Possible causes:\n' +
+      '• arXiv or the CORS proxy may be temporarily down — try again in a few minutes\n' +
+      '• Your network may block these services (firewall/VPN/work network)\n' +
+      '• If you opened this file directly (file://), the app uses a public CORS proxy as fallback. Running it via http://localhost is more reliable — see help link in the footer.'
+    );
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
+function setupAutoRefresh() {
+  if (!state.autoRefresh) return;
+  if (!state.lastFetch) {
+    doFetch();
+    return;
+  }
+  const elapsed = Date.now() - new Date(state.lastFetch).getTime();
+  const oneDay = 24 * 60 * 60 * 1000;
+  if (elapsed >= oneDay) {
+    doFetch();
+  }
+}
+
+function exportBookmarks() {
+  const data = {
+    exportedAt: new Date().toISOString(),
+    keywords: state.keywords,
+    authors: state.authors,
+    categories: state.categories,
+    bookmarks: Object.values(state.bookmarks),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `arxiv-bookmarks-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function clearCache() {
+  if (!confirm('Clear all cached papers? Bookmarks and keywords will be kept.')) return;
+  state.papers = [];
+  state.lastFetch = null;
+  localStorage.removeItem(STORAGE_KEYS.papers);
+  localStorage.removeItem(STORAGE_KEYS.lastFetch);
+  render();
+}
+
+// ============================================================
+// Wire up events
+// ============================================================
+document.getElementById('kw-add').addEventListener('click', addKeyword);
+document.getElementById('kw-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addKeyword();
+});
+
+function addCategory() {
+  const input = document.getElementById('cat-input');
+  const code = input.value.trim();
+  if (!code) return;
+  // Basic validation: arXiv categories look like "math.CO" or "cs.LG"
+  if (!/^[a-z\-]+(\.[A-Z]{2})?$/.test(code)) {
+    alert('Category should look like "math.CO" or "cs.LG" (lowercase area, dot, uppercase code).');
+    return;
+  }
+  if (state.categories.some(c => c.code === code)) {
+    input.value = '';
+    return;
+  }
+  state.categories.push({ code, enabled: true, priority: 'secondary' });
+  saveJSON(STORAGE_KEYS.categories, state.categories);
+  input.value = '';
+  render();
+}
+
+document.getElementById('cat-add').addEventListener('click', addCategory);
+document.getElementById('cat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addCategory();
+});
+
+function addAuthor() {
+  const input = document.getElementById('au-input');
+  const name = input.value.trim();
+  if (!name) return;
+  const weight = parseInt(document.getElementById('au-weight').value);
+  if (state.authors.some(a => a.name.toLowerCase() === name.toLowerCase())) {
+    input.value = '';
+    return;
+  }
+  state.authors.push({ name, weight });
+  saveJSON(STORAGE_KEYS.authors, state.authors);
+  input.value = '';
+  rescoreAll();
+  render();
+}
+
+document.getElementById('au-add').addEventListener('click', addAuthor);
+document.getElementById('au-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addAuthor();
+});
+
+document.getElementById('auto-bookmark-author').addEventListener('change', e => {
+  state.autoBookmarkAuthor = e.target.checked;
+  localStorage.setItem(STORAGE_KEYS.autoBookmarkAuthor, state.autoBookmarkAuthor);
+  if (state.autoBookmarkAuthor) {
+    rescoreAll(); // triggers auto-bookmark for existing papers
+  }
+  render();
+});
+
+document.getElementById('fetch-btn').addEventListener('click', doFetch);
+
+document.getElementById('min-score').addEventListener('input', () => render());
+document.getElementById('sort-by').addEventListener('change', () => render());
+
+document.getElementById('auto-refresh').addEventListener('change', e => {
+  state.autoRefresh = e.target.checked;
+  localStorage.setItem(STORAGE_KEYS.autoRefresh, state.autoRefresh);
+  renderRefreshStatus();
+});
+
+document.querySelectorAll('.nav-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    state.view = tab.dataset.view;
+    state.expanded.clear();
+    render();
+  });
+});
+
+document.getElementById('expand-all').addEventListener('click', () => {
+  getPapersForView().forEach(p => state.expanded.add(p.arxivId));
+  renderArticles();
+});
+
+document.getElementById('collapse-all').addEventListener('click', () => {
+  state.expanded.clear();
+  renderArticles();
+});
+
+document.getElementById('export-btn').addEventListener('click', exportBookmarks);
+document.getElementById('clear-cache-btn').addEventListener('click', clearCache);
+
+// ============================================================
+// Init
+// ============================================================
+// Pre-populate sensible defaults if first visit
+if (!localStorage.getItem(STORAGE_KEYS.keywords)) {
+  state.keywords = [
+    { term: 'graph', weight: 2 },
+    { term: 'Ramsey', weight: 3 },
+  ];
+  saveJSON(STORAGE_KEYS.keywords, state.keywords);
+}
+
+rescoreAll();
+render();
+setupAutoRefresh();
+</script>
+
+</body>
+</html>
