@@ -758,7 +758,7 @@
       <h2>Filters</h2>
       <div class="form-row">
         <label>Days back</label>
-        <input type="number" id="days-back" value="7" min="1" max="60" />
+        <input type="number" id="days-back" value="7" min="1" max="365" />
       </div>
       <div class="form-row">
         <label>Min score</label>
@@ -774,10 +774,20 @@
       </div>
       <div class="form-row">
         <label>Max results</label>
-        <input type="number" id="max-results" value="100" min="10" max="500" />
+        <input type="number" id="max-results" value="500" min="10" max="5000" />
+      </div>
+      <div class="form-row">
+        <label>Keep</label>
+        <select id="prefilter">
+          <option value="matched" selected>Only matches (recommended)</option>
+          <option value="all">All papers</option>
+        </select>
       </div>
       <button id="fetch-btn" style="width: 100%; margin-top: 8px;">Fetch papers</button>
       <div class="help-text" id="cache-info">No data yet. Click fetch to begin.</div>
+      <div class="help-text" style="margin-top: 6px; color: var(--ink-soft);">
+        <strong>Only matches</strong>: drops papers with no keyword/author hits before storing — fast and lightweight even for 100+ days. <strong>All papers</strong>: stores everything (use ≤500 results to avoid storage limits).
+      </div>
     </div>
 
     <div class="panel">
@@ -884,7 +894,31 @@ function loadJSON(key, fallback) {
 }
 
 function saveJSON(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    // Most likely QuotaExceededError when papers list is too large
+    if (e && (e.name === 'QuotaExceededError' || e.code === 22)) {
+      console.warn(`localStorage quota exceeded saving ${key}.`);
+      // For papers specifically, try saving a trimmed version (only matched papers)
+      if (key === STORAGE_KEYS.papers && Array.isArray(value)) {
+        const trimmed = value.filter(p =>
+          (p._score && p._score > 0) || (p._authorMatches && p._authorMatches.length > 0)
+        );
+        try {
+          localStorage.setItem(key, JSON.stringify(trimmed));
+          console.warn(`Saved ${trimmed.length} matched papers (dropped ${value.length - trimmed.length} unmatched).`);
+          alert(`Storage limit reached — saved ${trimmed.length} matched papers but dropped ${value.length - trimmed.length} unmatched ones.\n\nTip: switch "Keep" to "Only matches" in Filters to avoid this.`);
+        } catch (e2) {
+          alert(`Could not save papers — browser storage full. Try clearing the cache or fetching fewer papers.`);
+        }
+      } else {
+        alert(`Could not save ${key} — browser storage full.`);
+      }
+    } else {
+      console.error('saveJSON error:', e);
+    }
+  }
 }
 
 // ============================================================
@@ -937,18 +971,38 @@ async function fetchWithFallback(url) {
 
 // Each category fetches separately so we get fair coverage of each — combining
 // with OR in one query lets newer papers from one category crowd out the other.
-async function fetchOneCategory(cat, fmt, past, now, maxResults) {
+// arXiv API caps results at 2000 per request. For larger fetches we paginate.
+const ARXIV_PAGE_SIZE = 1000;
+
+async function fetchOneCategory(cat, fmt, past, now, maxResults, onProgress) {
   const query = `cat:${cat}+AND+submittedDate:[${fmt(past)}+TO+${fmt(now)}]`;
-  const url = `https://export.arxiv.org/api/query?search_query=${query}&start=0&max_results=${maxResults}&sortBy=submittedDate&sortOrder=descending`;
+  const allEntries = [];
+  let start = 0;
 
-  const xmlText = await fetchWithFallback(url);
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlText, 'application/xml');
+  while (start < maxResults) {
+    const pageSize = Math.min(ARXIV_PAGE_SIZE, maxResults - start);
+    const url = `https://export.arxiv.org/api/query?search_query=${query}&start=${start}&max_results=${pageSize}&sortBy=submittedDate&sortOrder=descending`;
 
-  if (doc.querySelector('parsererror')) throw new Error('XML parse error for ' + cat);
+    if (onProgress) onProgress(`Fetching ${cat} (${start + 1}–${start + pageSize})…`);
 
-  const entries = Array.from(doc.querySelectorAll('entry'));
-  return entries.map(entry => {
+    const xmlText = await fetchWithFallback(url);
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xmlText, 'application/xml');
+
+    if (doc.querySelector('parsererror')) throw new Error('XML parse error for ' + cat);
+
+    const pageEntries = Array.from(doc.querySelectorAll('entry'));
+    if (pageEntries.length === 0) break; // no more results
+    allEntries.push(...pageEntries);
+
+    if (pageEntries.length < pageSize) break; // last page (fewer than requested)
+    start += pageSize;
+
+    // Be polite: arXiv recommends 3s between requests. Keep it brief but present.
+    if (start < maxResults) await new Promise(r => setTimeout(r, 1500));
+  }
+
+  return allEntries.map(entry => {
     const id = entry.querySelector('id')?.textContent?.trim() || '';
     const arxivId = id.split('/abs/')[1] || id;
     const title = (entry.querySelector('title')?.textContent || '').replace(/\s+/g, ' ').trim();
@@ -960,15 +1014,15 @@ async function fetchOneCategory(cat, fmt, past, now, maxResults) {
     const pdfLink = Array.from(entry.querySelectorAll('link'))
       .find(l => l.getAttribute('title') === 'pdf')?.getAttribute('href') || '';
     const absLink = id;
-    // Track which "primary" category fetched this paper (papers can be cross-listed)
     const primaryCategory = entry.querySelector('arxiv\\:primary_category, primary_category')?.getAttribute('term') || categories[0] || cat;
 
     return { arxivId, title, abstract, published, updated, authors, categories, primaryCategory, pdfLink, absLink, fetchedFrom: cat };
   });
 }
 
-async function fetchArxivPapers({ daysBack, maxResults, categories }) {
+async function fetchArxivPapers({ daysBack, maxResults, categories, keywords, authors, prefilter, onProgress }) {
   // categories: [{ code: 'math.CO', enabled: true, priority: 'main' }, ...]
+  // prefilter: 'all' = keep everything, 'matched' = drop papers with no keyword/author hits
   const enabled = categories.filter(c => c.enabled);
   if (!enabled.length) throw new Error('No categories enabled');
 
@@ -977,7 +1031,6 @@ async function fetchArxivPapers({ daysBack, maxResults, categories }) {
   const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '') + '0000';
 
   // Each category gets its own slice of the maxResults budget.
-  // Main category gets a larger share since it's the priority.
   const mainCount = enabled.filter(c => c.priority === 'main').length;
   const secondaryCount = enabled.length - mainCount;
   const mainBudget = mainCount > 0
@@ -987,25 +1040,48 @@ async function fetchArxivPapers({ daysBack, maxResults, categories }) {
     ? Math.floor(maxResults * (mainCount > 0 ? 0.35 : 1.0) / secondaryCount)
     : 0;
 
-  // Run all category requests in parallel (arXiv allows this; rate limit is per-second not concurrent).
-  // But add small stagger between launches to be polite.
-  const results = await Promise.all(enabled.map(async (cat, i) => {
-    if (i > 0) await new Promise(r => setTimeout(r, 250 * i));
+  // Run categories sequentially (not parallel) so the progress messages make sense
+  // and we don't hammer the API. Each call already takes seconds for paginated fetches.
+  const allResults = [];
+  for (let i = 0; i < enabled.length; i++) {
+    const cat = enabled[i];
     const budget = cat.priority === 'main' ? mainBudget : secondaryBudget;
-    return fetchOneCategory(cat.code, fmt, past, now, budget);
-  }));
+    const batch = await fetchOneCategory(cat.code, fmt, past, now, budget, onProgress);
+    allResults.push(batch);
+  }
 
-  // Deduplicate by arxivId — a paper cross-listed in math.CO and math.AG appears in both fetches.
-  // Keep the entry from the first (highest-priority) category that found it.
+  // Deduplicate by arxivId
   const seen = new Map();
-  for (const batch of results) {
+  let totalRaw = 0;
+  for (const batch of allResults) {
+    totalRaw += batch.length;
     for (const paper of batch) {
-      if (!seen.has(paper.arxivId)) {
-        seen.set(paper.arxivId, paper);
-      }
+      if (!seen.has(paper.arxivId)) seen.set(paper.arxivId, paper);
     }
   }
-  return Array.from(seen.values());
+  const allPapers = Array.from(seen.values());
+
+  // Pre-filter: drop papers with no keyword/author hits BEFORE storing.
+  // This dramatically reduces memory/storage when fetching large date ranges.
+  if (prefilter === 'matched' && (keywords.length > 0 || authors.length > 0)) {
+    if (onProgress) onProgress(`Filtering ${allPapers.length} papers by keywords/authors…`);
+    const kept = [];
+    for (const p of allPapers) {
+      const { score, hits, authorMatches, authorBonus } = scorePaper(p, keywords, categories, authors);
+      // Keep if has any keyword match OR any author match
+      if (Object.keys(hits).length > 0 || authorMatches.length > 0) {
+        // Pre-compute score so we don't have to rescoreAll later
+        p._score = score;
+        p._hits = hits;
+        p._authorMatches = authorMatches;
+        p._authorBonus = authorBonus;
+        kept.push(p);
+      }
+    }
+    return { papers: kept, totalRaw, totalKept: kept.length, prefiltered: true };
+  }
+
+  return { papers: allPapers, totalRaw, totalKept: allPapers.length, prefiltered: false };
 }
 
 // ============================================================
@@ -1318,8 +1394,14 @@ function renderMeta() {
     let strategyNote = '';
     if (_fetchStrategy === 0) strategyNote = ' · direct';
     else if (_fetchStrategy > 0) strategyNote = ' · via proxy';
-    document.getElementById('cache-info').textContent =
-      `${state.papers.length} papers cached · last fetched ${timeAgo(last)}${strategyNote}`;
+    let line;
+    if (state._fetchSummary) {
+      // Show the just-finished summary, then revert on next render after a moment
+      line = `${state._fetchSummary}${strategyNote}`;
+    } else {
+      line = `${state.papers.length} papers cached · last fetched ${timeAgo(last)}${strategyNote}`;
+    }
+    document.getElementById('cache-info').textContent = line;
   } else {
     document.getElementById('last-update').textContent = 'never updated';
   }
@@ -1549,6 +1631,8 @@ function toggleBookmark(arxivId) {
 async function doFetch() {
   const btn = document.getElementById('fetch-btn');
   const original = btn.textContent;
+  const cacheInfo = document.getElementById('cache-info');
+  const originalCacheInfo = cacheInfo.textContent;
   btn.disabled = true;
   btn.innerHTML = '<span class="loader"></span>Fetching…';
 
@@ -1560,20 +1644,60 @@ async function doFetch() {
     }
     const daysBack = parseInt(document.getElementById('days-back').value) || 7;
     const maxResults = parseInt(document.getElementById('max-results').value) || 100;
-    const papers = await fetchArxivPapers({ daysBack, maxResults, categories: state.categories });
-    state.papers = papers;
-    rescoreAll();
+    const prefilterEl = document.getElementById('prefilter');
+    const prefilter = prefilterEl ? prefilterEl.value : 'all';
+
+    // Show progress in the cache-info area
+    const onProgress = (msg) => { cacheInfo.textContent = msg; };
+
+    const startedAt = Date.now();
+    const result = await fetchArxivPapers({
+      daysBack, maxResults,
+      categories: state.categories,
+      keywords: state.keywords,
+      authors: state.authors,
+      prefilter,
+      onProgress,
+    });
+
+    state.papers = result.papers;
+    // If prefilter was applied, scores are already set. Otherwise compute them now.
+    if (!result.prefiltered) {
+      rescoreAll();
+    } else {
+      // Auto-bookmark if enabled (rescoreAll normally handles this)
+      if (state.autoBookmarkAuthor) {
+        let added = 0;
+        for (const p of state.papers) {
+          if (p._authorMatches?.length && !state.bookmarks[p.arxivId]) {
+            state.bookmarks[p.arxivId] = { ...p, _bookmarkedAt: new Date().toISOString(), _autoBookmarked: true };
+            added++;
+          }
+        }
+        if (added > 0) saveJSON(STORAGE_KEYS.bookmarks, state.bookmarks);
+      }
+      saveJSON(STORAGE_KEYS.papers, state.papers);
+    }
+
     state.lastFetch = new Date().toISOString();
-    saveJSON(STORAGE_KEYS.papers, state.papers);
     localStorage.setItem(STORAGE_KEYS.lastFetch, state.lastFetch);
+
+    // Show summary of what was fetched
+    const elapsed = Math.round((Date.now() - startedAt) / 1000);
+    const filterNote = result.prefiltered
+      ? ` (filtered from ${result.totalRaw})`
+      : '';
+    state._fetchSummary = `Fetched ${result.totalKept} papers${filterNote} in ${elapsed}s`;
+
     render();
   } catch (e) {
+    cacheInfo.textContent = originalCacheInfo;
     alert(
       'Failed to fetch from arXiv: ' + e.message + '\n\n' +
       'Possible causes:\n' +
       '• arXiv or the CORS proxy may be temporarily down — try again in a few minutes\n' +
       '• Your network may block these services (firewall/VPN/work network)\n' +
-      '• If you opened this file directly (file://), the app uses a public CORS proxy as fallback. Running it via http://localhost is more reliable — see help link in the footer.'
+      '• If you opened this file directly (file://), the app uses a public CORS proxy as fallback. Running it via http://localhost is more reliable.'
     );
     console.error(e);
   } finally {
