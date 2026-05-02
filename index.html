@@ -971,13 +971,16 @@ async function fetchWithFallback(url) {
 
 // Each category fetches separately so we get fair coverage of each — combining
 // with OR in one query lets newer papers from one category crowd out the other.
-// arXiv API caps results at 2000 per request. For larger fetches we paginate.
-const ARXIV_PAGE_SIZE = 1000;
+// arXiv API caps results at 2000 per request, but free CORS proxies often reject
+// responses over ~500KB (413 errors). Smaller pages are more reliable when going
+// through a proxy. 200 entries ≈ 200-300KB which fits comfortably.
+const ARXIV_PAGE_SIZE = 200;
 
 async function fetchOneCategory(cat, fmt, past, now, maxResults, onProgress) {
   const query = `cat:${cat}+AND+submittedDate:[${fmt(past)}+TO+${fmt(now)}]`;
   const allEntries = [];
   let start = 0;
+  let lastError = null;
 
   while (start < maxResults) {
     const pageSize = Math.min(ARXIV_PAGE_SIZE, maxResults - start);
@@ -985,21 +988,37 @@ async function fetchOneCategory(cat, fmt, past, now, maxResults, onProgress) {
 
     if (onProgress) onProgress(`Fetching ${cat} (${start + 1}–${start + pageSize})…`);
 
-    const xmlText = await fetchWithFallback(url);
+    let xmlText;
+    try {
+      xmlText = await fetchWithFallback(url);
+    } catch (e) {
+      lastError = e;
+      console.warn(`Failed to fetch page starting at ${start} for ${cat}:`, e.message);
+      // Partial success is better than total failure — return what we have so far.
+      break;
+    }
+
     const parser = new DOMParser();
     const doc = parser.parseFromString(xmlText, 'application/xml');
-
-    if (doc.querySelector('parsererror')) throw new Error('XML parse error for ' + cat);
+    if (doc.querySelector('parsererror')) {
+      lastError = new Error('XML parse error for ' + cat);
+      break;
+    }
 
     const pageEntries = Array.from(doc.querySelectorAll('entry'));
     if (pageEntries.length === 0) break; // no more results
     allEntries.push(...pageEntries);
 
-    if (pageEntries.length < pageSize) break; // last page (fewer than requested)
+    if (pageEntries.length < pageSize) break; // last page
     start += pageSize;
 
-    // Be polite: arXiv recommends 3s between requests. Keep it brief but present.
-    if (start < maxResults) await new Promise(r => setTimeout(r, 1500));
+    if (start < maxResults) await new Promise(r => setTimeout(r, 800));
+  }
+
+  // Throw only if we got nothing at all
+  if (allEntries.length === 0 && lastError) throw lastError;
+  if (lastError && onProgress) {
+    onProgress(`Got ${allEntries.length} from ${cat} before error — continuing…`);
   }
 
   return allEntries.map(entry => {
